@@ -27,15 +27,15 @@ The process of fine-tuning an object detection model and visualizing it through 
 To generate saliency maps, import the package and run:
 ```
 res = DRISE_runner.get_drise_saliency_map(
-    imagelocation: str,
-    model: Optional[object],    
-    numclasses: int,
-    savename: str,
-    nummasks: int=25,
-    maskres: Tuple[int, int]=(4,4),
-    maskpadding: Optional[int]=None,
-    devicechoice: Optional[str]=None,
-    wrapperchoice: Optional[object] = PytorchFasterRCNNWrapper
+    image_location: str,
+    save_name: str,
+    num_masks: int = 25,
+    mask_res: Tuple[int, int] = (4, 4),
+    model: Optional[object],
+    num_classes: Optional[int] = 87,
+    mask_padding: Optional[int] = None,
+    device_choice: Optional[str] = None,
+    max_figures: Optional[int] = None
     )
 ```
 

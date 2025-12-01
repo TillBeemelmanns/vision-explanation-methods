@@ -81,32 +81,32 @@ def get_instance_segmentation_model(num_classes: int):
 
 
 def get_drise_saliency_map(
-        imagelocation: str,
+        image_location: str,
+        save_name: str,
+        num_masks: int = 25,
+        mask_res: Tuple[int, int] = (4, 4),
         model: Optional[object],
-        numclasses: int,
-        savename: str,
-        nummasks: int = 25,
-        maskres: Tuple[int, int] = (4, 4),
-        maskpadding: Optional[int] = None,
-        devicechoice: Optional[str] = None,
+        num_classes: Optional[int] = 87,
+        mask_padding: Optional[int] = None,
+        device_choice: Optional[str] = None,
         max_figures: Optional[int] = None
 ):
     """Run D-RISE on image and visualize the saliency maps.
 
-    :param imagelocation: Path of the image location
-    :type imagelocation: str
+    :param image_location: Path of the image location
+    :type image_location: str
+    :type save_name: str
+    :param num_masks: Number of masks to use for saliency
+    :type num_masks: int
+    :param mask_res: Resolution of mask before scale up
+    :type mask_res: Tuple of ints
     :param model: Input model for D-RISE. If None, Faster R-CNN model
         will be used.
     :type model: PyTorch model
-    :param numclasses: Number of classes model predicted
-    :type numclasses: int
-    :param savename: Path of the saved output figure
-    :type savename: str
-    :param nummasks: Number of masks to use for saliency
-    :type nummasks: int
-    :param maskres: Resolution of mask before scale up
-    :type maskres: Tuple of ints
-    :param maskpadding: How much to pad the mask before cropping
+    :param num_classes: Number of classes model predicted. Defaults to 87 for the pre-trained model.
+    :type num_classes: int
+    :param save_name: Path of the saved output figure
+    :param mask_padding: How much to pad the mask before cropping
     :type: Optional int
     :param max_figures: max figure # if memory limitations.
     :type: Optional int
@@ -114,21 +114,21 @@ def get_drise_saliency_map(
         figure is saved, list of labels
     :rtype: Tuple of - list of Matplotlib figures, str, list
     """
-    if not devicechoice:
+    if not device_choice:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     else:
-        device = devicechoice
+        device = device_choice
 
     if not model:
         unwrapped_model = detection.fasterrcnn_resnet50_fpn(
             pretrained=True, map_location=device)
         unwrapped_model.to(device)
-        model = PytorchDRiseWrapper(unwrapped_model, numclasses)
+        model = PytorchDRiseWrapper(unwrapped_model, num_classes)
 
-    image_open_pointer = imagelocation
-    if (imagelocation.startswith("http://")
-       or imagelocation.startswith("https://")):
-        response = requests.get(imagelocation)
+    image_open_pointer = image_location
+    if (image_location.startswith("http://")
+       or image_location.startswith("https://")):
+        response = requests.get(image_location)
         image_open_pointer = BytesIO(response.content)
 
     test_image = Image.open(image_open_pointer).convert('RGB')
@@ -151,12 +151,12 @@ def get_drise_saliency_map(
             target_detections=detections,
             # This is how many masks to run -
             # more is slower but gives higher quality mask.
-            number_of_masks=nummasks,
-            mask_padding=maskpadding,
+            number_of_masks=num_masks,
+            mask_padding=mask_padding,
             device=device,
             # This is the resolution of the random masks.
             # High resolutions will give finer masks, but more need to be run.
-            mask_res=maskres,
+            mask_res=mask_res,
             verbose=True  # Turns progress bar on/off.
         )
     else:
@@ -175,12 +175,12 @@ def get_drise_saliency_map(
             target_detections=detections,
             # This is how many masks to run -
             # more is slower but gives higher quality mask.
-            number_of_masks=nummasks,
-            mask_padding=maskpadding,
+            number_of_masks=num_masks,
+            mask_padding=mask_padding,
             device=device,
             # This is the resolution of the random masks.
             # High resolutions will give finer masks, but more need to be run.
-            mask_res=maskres,
+            mask_res=mask_res,
             verbose=True  # Turns progress bar on/off.
         )
 
@@ -223,7 +223,7 @@ def get_drise_saliency_map(
         stream.seek(0)
         b64_string = base64.b64encode(stream.read()).decode()
         fig_list.append(b64_string)
-        fig.savefig(savename+str(i)+IMAGE_TYPE)
+        fig.savefig(save_name+str(i)+IMAGE_TYPE)
         fig.clear()
 
-    return fig_list, savename, label_list
+    return fig_list, save_name, label_list

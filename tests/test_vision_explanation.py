@@ -61,10 +61,9 @@ def test_vision_explain_preloaded():
     # save tested result in res
 
     # run the main function for saliency map generation
-    res = dr.get_drise_saliency_map(imagelocation=imgpath,
+    res = dr.get_drise_saliency_map(image_location=imgpath,
+                                    save_name=savepath,
                                     model=None,
-                                    numclasses=90,
-                                    savename=savepath,
                                     max_figures=2)
 
     # assert that result is a tuple of figure, location, and labels.
@@ -89,11 +88,10 @@ def test_vision_explain_preloaded():
 
     # run the main function for saliency map generation
     # in the case of just a single item in photo
-    res2 = dr.get_drise_saliency_map(imagelocation=imgpath2,
-                                     model=None,
-                                     numclasses=90,
-                                     savename=savepath2,
-                                     max_figures=2)
+    res2 = dr.get_drise_saliency_map(image_location=imgpath2,
+                                    save_name=savepath,
+                                    model=None,
+                                    max_figures=2)
 
     # assert that result is a tuple of figure, location, and labels.
     assert (len(res2) == 3)
@@ -155,10 +153,10 @@ def test_vision_explain_loadmodel(use_transforms):
         model = PytorchDRiseWrapper(model=model,
                                     number_of_classes=NUM_CLASSES)
 
-    res = dr.get_drise_saliency_map(imagelocation=imgpath,
+    res = dr.get_drise_saliency_map(image_location=imgpath,
+                                    save_name=savepath,
                                     model=model,
-                                    numclasses=NUM_CLASSES,
-                                    savename=savepath,
+                                    num_classes=NUM_CLASSES,
                                     max_figures=2)
 
     # assert that result is a tuple of figure, location, and labels.
@@ -183,11 +181,11 @@ def test_vision_explain_loadmodel(use_transforms):
 
     # run the main function for saliency map generation
     # in the case of just a single item in photo
-    res2 = dr.get_drise_saliency_map(imagelocation=imgpath2,
-                                     model=model,
-                                     numclasses=NUM_CLASSES,
-                                     savename=savepath2,
-                                     max_figures=2)
+    res2 = dr.get_drise_saliency_map(image_location=imgpath2,
+                                    save_name=savepath2,
+                                    model=model,
+                                    num_classes=NUM_CLASSES,
+                                    max_figures=2)
 
     # assert that result is a tuple of figure, location, and labels.
     assert (len(res2) == 3)
