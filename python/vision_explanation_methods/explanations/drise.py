@@ -218,24 +218,35 @@ def DRISE_saliency(
         mask_padding: Optional[int] = None,
         device: str = "cpu",
         verbose: bool = False,
+        use_fp16: bool = False,
 ) -> List[torch.Tensor]:
     """Compute DRISE saliency map.
 
+    Memory-efficient implementation using online accumulation instead of
+    storing all mask records. This reduces memory from O(N) to O(1) in
+    the number of masks.
+
     :param model: Object detection model wrapped for occlusion
     :type model: OcclusionModelWrapper
+    :param image_tensor: Input image tensor
+    :type image_tensor: Tensor
     :param target_detections: Baseline detections to get saliency
         maps for
     :type target_detections: List of Detection Records
     :param number_of_masks: Number of masks to use for saliency
     :type number_of_masks: int
     :param mask_res: Resolution of mask before scale up
-    :type maks_res: Tuple of ints
+    :type mask_res: Tuple of ints
     :param mask_padding: How much to pad the mask before cropping
-    :type: Optional int
-    :device: Device to use to run the function
-    :type: str
+    :type mask_padding: Optional int
+    :param device: Device to use to run the function
+    :type device: str
+    :param verbose: Whether to show progress bar
+    :type verbose: bool
+    :param use_fp16: Use mixed-precision (fp16) inference on CUDA devices
+    :type use_fp16: bool
     :return: A list of tensors, one tensor for each image. Each tensor
-        is of shape [D, 3, W, H], and [i ,3 W, H] is the saliency map
+        is of shape [D, 3, W, H], and [i, 3, W, H] is the saliency map
         associated with detection i.
     :rtype: List torch.Tensor
     """
@@ -244,28 +255,108 @@ def DRISE_saliency(
         mask_padding = int(max(
             img_size[0] / mask_res[0], img_size[1] / mask_res[1]))
 
-    mask_records = []
+    # Online accumulators - initialized on first valid iteration.
+    # This avoids storing all N masks in memory (the original bottleneck).
+    weighted_masks_accum = None   # List[Tensor(D_i, 3, H, W)] per image
+    average_scores_accum = None   # List[Tensor(D_i,)] per image
+    unweighted_mask_accum = None  # Tensor(3, H, W)
+    num_accumulated = 0
 
     mask_iterator = tqdm.tqdm(range(number_of_masks)) if verbose \
         else range(number_of_masks)
 
-    for _ in mask_iterator:
+    use_autocast = (use_fp16 and device != "cpu"
+                    and torch.cuda.is_available())
+
+    for mask_idx in mask_iterator:
         mask = generate_mask(mask_res, img_size, mask_padding, device)
         masked_image = fuse_mask(image_tensor, mask)
-        with torch.no_grad():
-            masked_detections = model.predict(masked_image)
-        affinity_scores = []
 
+        with torch.no_grad():
+            if use_autocast:
+                with torch.amp.autocast('cuda'):
+                    masked_detections = model.predict(masked_image)
+            else:
+                masked_detections = model.predict(masked_image)
+
+        affinity_scores = []
         for (target_detection, masked_detection) in zip(target_detections,
                                                         masked_detections):
             affinity_scores.append(
                 compute_affinity_scores(target_detection,
-                                        masked_detection).detach().to("cpu"))
-        mask_records.append(MaskAffinityRecord(
-            mask=mask.to("cpu"),
-            affinity_scores=affinity_scores)
+                                        masked_detection).detach())
+
+        # Move mask to CPU for accumulation (saves GPU memory)
+        mask_cpu = mask.to("cpu")
+
+        try:
+            if weighted_masks_accum is None:
+                # Initialize accumulators from first valid iteration
+                new_unweighted = mask_cpu.clone()
+                new_avg_scores = []
+                new_weighted = []
+                for s in affinity_scores:
+                    s_cpu = s.to("cpu")
+                    new_avg_scores.append(s_cpu.clone())
+                    new_weighted.append(
+                        s_cpu.unsqueeze(1).unsqueeze(1).unsqueeze(1)
+                        * mask_cpu
+                    )
+                # Assign atomically after all succeed
+                unweighted_mask_accum = new_unweighted
+                average_scores_accum = new_avg_scores
+                weighted_masks_accum = new_weighted
+            else:
+                unweighted_mask_accum += mask_cpu
+                for i, s in enumerate(affinity_scores):
+                    s_cpu = s.to("cpu")
+                    weighted_masks_accum[i] += (
+                        s_cpu.unsqueeze(1).unsqueeze(1).unsqueeze(1)
+                        * mask_cpu
+                    )
+                    average_scores_accum[i] += s_cpu
+            num_accumulated += 1
+        except RuntimeError:
+            continue
+        finally:
+            del mask, masked_image, masked_detections, mask_cpu
+            del affinity_scores
+
+        # Periodically free GPU cache to prevent fragmentation
+        if (use_autocast and mask_idx % 500 == 0):
+            torch.cuda.empty_cache()
+
+    if weighted_masks_accum is None or num_accumulated == 0:
+        return [[]]
+
+    # Normalize average scores
+    for scores in average_scores_accum:
+        scores /= num_accumulated
+
+    # Subtract mean contribution (normalization)
+    for average_score, weighted_mask in zip(average_scores_accum,
+                                            weighted_masks_accum):
+        weighted_mask -= (
+            average_score.unsqueeze(1).unsqueeze(1).unsqueeze(1)
+            * unweighted_mask_accum
         )
-    return saliency_fusion(mask_records, device, verbose=verbose)
+
+    # Free accumulators no longer needed
+    del unweighted_mask_accum, average_scores_accum
+
+    # Normalize each detection's map to [0, 1]
+    normalized_masks = []
+    for imgs in weighted_masks_accum:
+        normed_masks = []
+        for det_mask in imgs:
+            det_mask = det_mask - torch.min(det_mask)
+            max_val = torch.max(det_mask)
+            if max_val > 0:
+                det_mask = det_mask / max_val
+            normed_masks.append({'detection': det_mask})
+        normalized_masks.append(normed_masks)
+
+    return normalized_masks
 
 
 def convert_base64_to_tensor(b64_img: str, device: str) -> Tensor:

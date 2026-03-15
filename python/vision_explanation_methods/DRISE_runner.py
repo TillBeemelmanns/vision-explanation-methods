@@ -85,7 +85,7 @@ def get_drise_saliency_map(
         save_name: str,
         num_masks: int = 25,
         mask_res: Tuple[int, int] = (4, 4),
-        model: Optional[object],
+        model: Optional[object] = None,
         num_classes: Optional[int] = 87,
         mask_padding: Optional[int] = None,
         device_choice: Optional[str] = None,
