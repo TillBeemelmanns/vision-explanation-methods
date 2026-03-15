@@ -204,7 +204,7 @@ def generate_custom_visualizations(image_path, num_masks=10000):
     xmin, ymin, xmax, ymax = bbox
     width = xmax - xmin
     height = ymax - ymin
-    rect = plt.Rectangle((xmin, ymin), width, height, linewidth=3, edgecolor='lime', facecolor='none')
+    rect = plt.Rectangle((xmin, ymin), width, height, linewidth=6, edgecolor='lime', facecolor='none')
     ax.add_patch(rect)
 
     plt.savefig("output_overlay_bbox.jpg", dpi=100)
@@ -223,7 +223,7 @@ def generate_custom_visualizations(image_path, num_masks=10000):
     xmin, ymin, xmax, ymax = bbox
     width = xmax - xmin
     height = ymax - ymin
-    rect = plt.Rectangle((xmin, ymin), width, height, linewidth=3, edgecolor='lime', facecolor='none')
+    rect = plt.Rectangle((xmin, ymin), width, height, linewidth=6, edgecolor='lime', facecolor='none')
     ax.add_patch(rect)
 
     plt.savefig("output_detection.jpg", dpi=100)
